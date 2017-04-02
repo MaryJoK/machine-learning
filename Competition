@@ -1,0 +1,113 @@
+%matplotlib inline
+
+# This cell can be run independently of the ones above it.
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import tensorflow as tf
+import numpy as np
+
+# Path for saving model data
+model_path = 'tmp/model.ckpt'
+
+# Hyperparameters 
+learn_rate = 0.304
+batch_size = 8
+epochs = 10
+
+# Load the data into dataframes
+# There is NO OVERLAP between the training and testing data
+# Take a minute to remember why this should be the case!
+iris_train = pd.read_csv('data/iris_train.csv', dtype={'Species': 'category'})
+iris_test = pd.read_csv('data/iris_test.csv', dtype={'Species': 'category'})
+test_features = iris_test.as_matrix()[:,:4]
+test_targets = pd.get_dummies(iris_test.Species).as_matrix()
+
+# Create placeholder for the input tensor (input layer):
+# Our input has four features so our shape will be (none, 4)
+# A variable number of rows and four feature columns.
+x = tf.placeholder(tf.float32, [None, 4])
+
+# Outputs will have 3 columns since there are three categories
+# This placeholder is for our targets (correct categories)
+# It will be fed with one-hot vectors from the data
+y_ = tf.placeholder(tf.float32, [None, 3])
+
+# The baseline model will consist of a single softmax layer with 
+# weights W and bias b
+# Because these values will be calculated and recalculated
+# on the fly, we'll declare variables for them.
+# We use a normal distribution to initialize our matrix with small random values
+W = tf.Variable(tf.truncated_normal([4, 3], stddev=0.1))
+
+# And an initial value of zero for the bias.
+b = tf.Variable(tf.zeros([3]))  
+
+# We define our simple model here
+y = tf.nn.softmax(tf.matmul(x, W) + b)
+
+#=================================================================
+# And our cost function here (make sure only one is uncommented!)|
+#=================================================================
+
+# Mean Squared Error
+cost = tf.reduce_mean(tf.squared_difference(y_, y))
+
+# Cross-Entropy
+# cost = tf.reduce_mean(
+#     tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y))
+#
+#=================================================================
+
+# Gradient descent step
+train_step = tf.train.GradientDescentOptimizer(learn_rate).minimize(cost)
+
+# Start a TensorFlow session
+with tf.Session() as sess:
+
+    # Initialize all of the Variables
+    sess.run(tf.global_variables_initializer())
+    
+    # Operation for saving all variables
+    saver = tf.train.Saver()
+    
+    # Training loop
+    for epoch in range(epochs):
+        avg_cost = 0.
+        num_batches = int(iris_train.shape[0]/batch_size)
+        
+        for _ in range(num_batches):
+            # Randomly select <batch_size> samples from the set (with replacement)
+            batch = iris_train.sample(n=batch_size)
+
+            # Capture the x and y_ data
+            batch_features = batch.as_matrix()[:,:4]
+
+            # get_dummies turns our categorical data into one-hot vectors
+            batch_targets = pd.get_dummies(batch.Species).as_matrix()
+
+            # Run the training step using batch_features and batch_targets
+            # as x and y_, respectively and capture the cost at each step
+            _, c = sess.run([train_step, cost], feed_dict={x:batch_features, y_:batch_targets})
+
+            # Calculate the average cost for the epoch
+            avg_cost += c/num_batches
+
+        # Print epoch results
+        print("Epoch %04d cost: %s" % (epoch + 1, "{:.4f}".format(avg_cost)))
+    
+    # If our model's most likely classification is equal to the one-hot index
+    # add True to our correct_prediction tensor
+    correct_prediction = tf.equal(tf.argmax(y,1), tf.argmax(y_,1))
+
+    # Cast the boolean variables as floats and take the mean.
+    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+    # Calculate the percentage of correct answers using the test data
+    score = sess.run(accuracy, feed_dict={x: test_features, y_: test_targets}) * 100
+    print("\nThe model correctly identified %s of the test data." % "{:.2f}%".format(score))
+
+    # Save the model data
+    save_path = saver.save(sess, model_path)
+    print("\nModel data saved to %s" % model_path)
+    
